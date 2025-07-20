@@ -1,3 +1,6 @@
+# ||============ Begin Analysis of Beer Production Data ============||
+# Repo: https://github.com/burnett013/stats_mod5.git
+
 # === Load Required Libraries ===
 # install.packages(c("lubridate", "ggplot2", "dplyr", "car", "readxl", "httpgd"))
 
@@ -5,21 +8,39 @@ library(readxl)
 library(ggplot2)
 library(lubridate)
 library(dplyr)
-library(car)      # for Durbin-Watson test
-# library(httpgd)
+library(car)
 
+# === DEFINE YOUR FILE PATH ===
+file_path <- "/Users/andyburnett/Library/Mobile Documents/com~apple~CloudDocs/Desktop/X03.27.25/Education/Graduate/USF Grad/Classes/SU25/QMB6304_Stats_1/module_5/assignment_5"
+full_path <- file.path(file_path, "6304 Assignment 5 Data.xlsx")
 
 # === Load Data ===
-data <- read_excel("6304 Assignment 5 Data.xlsx")
+if (!file.exists(full_path)) stop("Check the file path!")
 
-# === Rename Columns ===
-colnames(data) <- c("index", "date", "production")
+data <- read_excel(full_path)
 
-# === Create Year and Month Columns ===
-data$year <- year(data$date)
-data$month <- month(data$date)
+# === Standardize column names if needed ===
+if (!all(c("index","date","production") %in% colnames(data))) {
+  colnames(data) <- c("index", "date", "production")
+  message("Coluns renamed to: index, date, production")
+}
 
-# === Line Plot of Production Over Time ===
+# === Ensure date column is a proper Date ===
+if (!inherits(data$date, "Date")) {
+  data$date <- as.Date(data$date)
+}
+
+# === Now safely add year & month ===
+if (!"year" %in% colnames(data)) {
+  data$year  <- year(data$date)
+  data$month <- month(data$date)
+  message("Year & month columns created")
+}
+
+# === Debug print ===
+glimpse(data)
+
+# === Line Plot ===
 ggplot(data, aes(x = index, y = production)) +
   geom_line(color = "steelblue") +
   labs(
@@ -32,11 +53,9 @@ ggplot(data, aes(x = index, y = production)) +
 model1 <- lm(production ~ index, data = data)
 summary(model1)
 
-# Slope and correlation
 slope <- coef(model1)[["index"]]
 predicted <- predict(model1)
 correlation <- cor(data$production, predicted)
-
 cat("Slope of regression line:", slope, "\n")
 cat("Correlation coefficient:", correlation, "\n")
 
@@ -54,25 +73,20 @@ ggplot(data, aes(x = index, y = production)) +
 dw_result <- durbinWatsonTest(model1)
 print(dw_result)
 
-# === Seasonal Index and Deseasonalization ===
+# === Seasonal Index + Deseasonalization ===
 data$month <- factor(data$month, levels = 1:12)
 monthly_avg <- data %>%
   group_by(month) %>%
-  summarise(avg_monthly_prod = mean(production))
+  summarise(avg_monthly_prod = mean(production), .groups = "drop")
 
-# Join Seasonal Indics
 data <- left_join(data, monthly_avg, by = "month")
 data$seasonal_index <- data$avg_monthly_prod
 data$deseasonalized <- data$production / data$seasonal_index * mean(data$seasonal_index)
 
 # === Two Regression Models on Deseasonalized Data ===
-# Model A: Simple Linear
 model_a <- lm(deseasonalized ~ index, data = data)
-
-# Model B: Polynomial
 model_b <- lm(deseasonalized ~ index + I(index^2), data = data)
 
-# Reseasonalize Fited Values
 data$fit_a <- predict(model_a)
 data$fit_b <- predict(model_b)
 data$reseason_a <- data$fit_a * data$seasonal_index / mean(data$seasonal_index)
@@ -89,3 +103,4 @@ ggplot(data, aes(x = index)) +
     y = "Beer Production (Megaliters)",
     caption = "Black = Original, Blue = Linear Model, Green = Polynomial Model"
   )
+  # ||============ END Analysis of Beer Production Data ============||
