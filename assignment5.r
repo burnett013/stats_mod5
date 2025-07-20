@@ -1,0 +1,91 @@
+# === Load Required Libraries ===
+# install.packages(c("lubridate", "ggplot2", "dplyr", "car", "readxl", "httpgd"))
+
+library(readxl)
+library(ggplot2)
+library(lubridate)
+library(dplyr)
+library(car)      # for Durbin-Watson test
+# library(httpgd)
+
+
+# === Load Data ===
+data <- read_excel("6304 Assignment 5 Data.xlsx")
+
+# === Rename Columns ===
+colnames(data) <- c("index", "date", "production")
+
+# === Create Year and Month Columns ===
+data$year <- year(data$date)
+data$month <- month(data$date)
+
+# === Line Plot of Production Over Time ===
+ggplot(data, aes(x = index, y = production)) +
+  geom_line(color = "steelblue") +
+  labs(
+    title = "Monthly Beer Production in Australia (1956–1978)",
+    x = "Index",
+    y = "Beer Production (Megaliters)"
+  )
+
+# === Simple Regression Model ===
+model1 <- lm(production ~ index, data = data)
+summary(model1)
+
+# Slope and correlation
+slope <- coef(model1)[["index"]]
+predicted <- predict(model1)
+correlation <- cor(data$production, predicted)
+
+cat("Slope of regression line:", slope, "\n")
+cat("Correlation coefficient:", correlation, "\n")
+
+# === Plot with Regression Line ===
+ggplot(data, aes(x = index, y = production)) +
+  geom_line(color = "gray") +
+  geom_line(aes(y = predicted), color = "red") +
+  labs(
+    title = "Beer Production with Simple Linear Regression Line",
+    x = "Index",
+    y = "Beer Production (Megaliters)"
+  )
+
+# === Durbin-Watson Test ===
+dw_result <- durbinWatsonTest(model1)
+print(dw_result)
+
+# === Seasonal Index and Deseasonalization ===
+data$month <- factor(data$month, levels = 1:12)
+monthly_avg <- data %>%
+  group_by(month) %>%
+  summarise(avg_monthly_prod = mean(production))
+
+# Join Seasonal Indics
+data <- left_join(data, monthly_avg, by = "month")
+data$seasonal_index <- data$avg_monthly_prod
+data$deseasonalized <- data$production / data$seasonal_index * mean(data$seasonal_index)
+
+# === Two Regression Models on Deseasonalized Data ===
+# Model A: Simple Linear
+model_a <- lm(deseasonalized ~ index, data = data)
+
+# Model B: Polynomial
+model_b <- lm(deseasonalized ~ index + I(index^2), data = data)
+
+# Reseasonalize Fited Values
+data$fit_a <- predict(model_a)
+data$fit_b <- predict(model_b)
+data$reseason_a <- data$fit_a * data$seasonal_index / mean(data$seasonal_index)
+data$reseason_b <- data$fit_b * data$seasonal_index / mean(data$seasonal_index)
+
+# === Plot Original vs Reseasonalized Models ===
+ggplot(data, aes(x = index)) +
+  geom_line(aes(y = production), color = "black", linewidth = 1, alpha = 0.6) +
+  geom_line(aes(y = reseason_a), color = "blue", linetype = "dashed") +
+  geom_line(aes(y = reseason_b), color = "green", linetype = "dotted") +
+  labs(
+    title = "Original vs Fitted Values from Two Models",
+    x = "Index",
+    y = "Beer Production (Megaliters)",
+    caption = "Black = Original, Blue = Linear Model, Green = Polynomial Model"
+  )
